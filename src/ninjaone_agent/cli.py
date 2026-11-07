@@ -33,11 +33,11 @@ async def _run() -> None:
             if question.lower() in {"exit", "quit"}:
                 break
             try:
-                print("\\nAssistant:")
+                print("\nAssistant:")
                 answer = await agent.ask(question)
-                print(answer + "\\n")
+                print(answer + "\n")
             except Exception as exc:
-                print(f"[Agent error] {type(exc).__name__}: {exc}\\n")
+                print(f"[Agent error] {type(exc).__name__}: {exc}\n")
     finally:
         print("Agent stopped.")
 
@@ -46,7 +46,7 @@ def main() -> None:
     try:
         asyncio.run(_run())
     except KeyboardInterrupt:
-        print("\\nAgent stopped.")
+        print("\nAgent stopped.")
 
 
 if __name__ == "__main__":
