@@ -12,6 +12,10 @@ def test_raw_call_method_detection():
     assert _method_for_tool("raw_call", {"request": "GET /v2/devices?page=2"}) == "GET"
 
 
+def test_saved_call_without_explicit_method_is_blocked():
+    assert _method_for_tool("call", {"memory_id": "saved-123"}) == "UNKNOWN"
+
+
 def test_non_execution_tools_have_no_http_method():
     assert _method_for_tool("find_endpoint", {"query": "devices"}) is None
     assert _method_for_tool("describe_endpoint", {"endpoint": "GET /v2/devices"}) is None
