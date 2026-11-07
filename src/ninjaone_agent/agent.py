@@ -33,6 +33,8 @@ Operating rules:
 def _method_for_tool(tool_name: str, args: dict[str, Any]) -> str | None:
     name = tool_name.rsplit("__", 1)[-1]
     candidate = str(args.get("endpoint", "")) if name == "call" else ""
+    if name == "call" and not candidate and args.get("memory_id"):
+        return "UNKNOWN"
     if name == "raw_call":
         candidate = str(args.get("request", ""))
     match = re.match(r"^\s*(GET|POST|PUT|PATCH|DELETE)\s+", candidate, re.I)
@@ -52,8 +54,9 @@ async def _guard_tool(tool: Any) -> StructuredTool:
 
     async def guarded(**kwargs: Any) -> Any:
         method = _method_for_tool(original.name, kwargs)
-        if method == "DELETE":
-            return {"blocked": True, "method": method, "reason": "DELETE operations are disabled by the local agent safety policy."}
+        if method in {"DELETE", "UNKNOWN"}:
+            reason = "DELETE operations are disabled by the local agent safety policy." if method == "DELETE" else "Saved-call replay without an explicit HTTP method is blocked because its action cannot be verified."
+            return {"blocked": True, "method": method, "reason": reason}
         if method in {"POST", "PUT", "PATCH"}:
             approved = await asyncio.to_thread(_confirm_action, method, kwargs)
             if not approved:
