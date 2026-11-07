@@ -67,11 +67,12 @@ def _client() -> NinjaClient:
         client_id = os.environ.get("NINJAONE_CLIENT_ID")
         client_secret = os.environ.get("NINJAONE_CLIENT_SECRET")
         instance = os.environ.get("NINJAONE_INSTANCE", "app.ninjarmm.com")
+        scope = os.environ.get("NINJAONE_SCOPE", "monitoring management control")
         if not client_id or not client_secret:
             raise NinjaAuthError(
                 "NINJAONE_CLIENT_ID and NINJAONE_CLIENT_SECRET must be set"
             )
-        _CLIENT = NinjaClient(client_id, client_secret, instance)
+        _CLIENT = NinjaClient(client_id, client_secret, instance, scope=scope)
     return _CLIENT
 
 
