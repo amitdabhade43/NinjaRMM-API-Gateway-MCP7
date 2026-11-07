@@ -1,90 +1,116 @@
-# NinjaRMM API Gateway MCP Server
+# NinjaRMM-API-Gateway-MCP7
 
-Model Context Protocol server giving Claude full access to the NinjaOne (Ninja RMM) API v2 — all **306 endpoints across 26 categories** — through a small set of discovery + execution tools.
+A local-first NinjaOne API v2 gateway and **single-brain OLMo + LangGraph agent**.
 
-## Design
+This repository starts from the upstream [NinjaRMM-API-Gateway-MCP](https://github.com/jasondsmith72/NinjaRMM-API-Gateway-MCP) project. The upstream gateway and its OpenAPI catalogue are retained as the API execution/discovery layer. The agent is being built here as a separate project; no changes are made to the upstream repository or your earlier fork.
 
-- **Zero-build gateway.** The OpenAPI spec (`NinjaRMM-API-v2.json`) is loaded into memory at startup. No SQLite, no index build step — update the spec and restart.
-- **7 focused tools** (not 306). Claude finds endpoints by fuzzy search, then calls them through a single `call` tool.
-- **Async HTTP with connection pooling.** One `httpx.AsyncClient` per process; OAuth2 token cached in memory and refreshed ~60s before expiry.
-- **Response protection.** Large payloads (NinjaOne device lists, etc.) are truncated before reaching the model context.
-- **Structured output.** Tools return dicts, not stringified JSON.
+## Goals
 
-## Setup
+- Cover the full NinjaOne API v2 OpenAPI catalogue, not a hand-picked list of seven business functions.
+- Let one local OLMo model understand the request, plan, discover endpoints, choose parameters, call tools, inspect results, and write the answer.
+- Use LangGraph for the agent loop and MCP for the API tool boundary.
+- Ground answers in returned NinjaOne data. Never fabricate records, totals, or fields.
+- Keep credentials local; no cloud LLM endpoint is required.
+- Support multi-step requests, endpoint schema inspection, and paginated queries.
+- Automatically permit GET requests. Require explicit terminal confirmation for POST, PUT, and PATCH. Block DELETE in the agent.
 
-### 1. NinjaOne API credentials
+## Architecture
 
-In NinjaOne → **Administration → Apps → API**, create a new application with:
-
-- Grant type: **Client Credentials**
-- Scopes: `monitoring`, `management`, `control`
-
-Save the Client ID and Client Secret.
-
-### 2. Install
-
-```bash
-pip install -e .
+```text
+User
+  |
+  v
+Local OLMo (OpenAI-compatible Foundry endpoint)
+  |  one reasoning model / one LangGraph ReAct loop
+  v
+MCP tools (discovery + schema + API execution)
+  |
+  v
+NinjaOne API v2 + bundled OpenAPI catalogue
+  |
+  v
+Grounded tool results -> OLMo final answer
 ```
 
-### 3. Configure Claude
+Python provides transport, schema access, validation, and action safety. It does not hard-code intent-to-endpoint routing or compose the final answer.
 
-Add to your MCP client config:
+## Requirements
 
-```json
-{
-  "mcpServers": {
-    "NinjaRMM-API-Gateway-MCP": {
-      "command": "python",
-      "args": ["-m", "ninja_mcp"],
-      "env": {
-        "NINJAONE_CLIENT_ID": "your-client-id",
-        "NINJAONE_CLIENT_SECRET": "your-client-secret",
-        "NINJAONE_INSTANCE": "app.ninjarmm.com"
-      }
-    }
-  }
-}
-```
+- Python 3.10+
+- A local OpenAI-compatible model server such as Foundry Local
+- NinjaOne API application credentials with the scopes needed for the endpoints you intend to use
 
-## Tools
+## Windows PowerShell setup
 
-| Tool | Purpose |
-|---|---|
-| `find_endpoint` | Fuzzy search endpoints. Filters: `query`, `category`, `method`. No args → list categories. |
-| `describe_endpoint` | Full details (parameters, request body, responses) for one endpoint. |
-| `call` | Execute a call. Pass `endpoint: "METHOD /path"`, `path_params`, `query`, `body`. |
-| `raw_call` | Quick-form execution: `raw_call("GET /v2/devices?df=class eq 'WINDOWS_WORKSTATION'")`. |
-| `memory_save` | Save a reusable call with a name; returns an `id`. |
-| `memory_list` | List saved calls. |
-| `memory_delete` | Delete by `id`, or `"*"` to clear all. |
+Run from the repository root:
 
-## Environment variables
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `NINJAONE_CLIENT_ID` | yes | — | OAuth2 Client ID |
-| `NINJAONE_CLIENT_SECRET` | yes | — | OAuth2 Client Secret |
-| `NINJAONE_INSTANCE` | no | `app.ninjarmm.com` | Regional instance (`eu.ninjarmm.com`, `ca.ninjarmm.com`, `oc.ninjarmm.com`) |
-| `NINJA_MCP_SPEC` | no | bundled | Override path to OpenAPI JSON |
-| `NINJA_MCP_HOME` | no | `~/.ninja-mcp` | Directory for persistent fast-memory store |
-| `NINJA_MCP_LOG_LEVEL` | no | `INFO` | Python logging level (stderr only) |
-
-## Updating the API spec
-
-```bash
-curl -o NinjaRMM-API-v2.json https://app.ninjarmm.com/apidocs/NinjaRMM-API-v2.json
-```
-
-Restart the server; changes are picked up on startup — no rebuild required.
-
-## Development
-
-```bash
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -e ".[dev]"
-pytest
+Copy-Item .env.example .env
+notepad .env
 ```
 
-## Categories
+Set the values in `.env`. Do not commit this file.
 
-System, Management, Queries, Devices, Knowledge Base Articles, Custom Tabs, Ticketing, Organization Checklists, Organization Documents, Related Items, Custom Fields, Document Templates, Asset Tags, Organizations, Checklist Templates, Software Licenses, Unmanaged Devices, Backup, Node Roles, Users, Vulnerability Management, Location, Webhooks, Groups, Billing, Asset Relationships.
+## Configuration
+
+```dotenv
+NINJAONE_CLIENT_ID=your-client-id
+NINJAONE_CLIENT_SECRET=your-client-secret
+NINJAONE_INSTANCE=eu.ninjarmm.com
+NINJAONE_SCOPE=monitoring management control
+
+FOUNDRY_BASE_URL=http://127.0.0.1:64541/v1
+FOUNDRY_MODEL=olmo-3-7b-instruct-generic-gpu
+FOUNDRY_API_KEY=local
+AGENT_RECURSION_LIMIT=30
+NINJA_MCP_LOG_LEVEL=INFO
+```
+
+Use the actual Foundry endpoint and model id shown by your local Foundry installation. Keep `.env` private.
+
+## Run
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+ninjaone-agent
+```
+
+Or:
+
+```powershell
+python ninjaone_agent.py
+```
+
+Type `exit` to quit. The agent uses the MCP gateway as a local stdio child process, so you do not need to start a second server manually.
+
+## API coverage and accuracy
+
+The bundled `NinjaRMM-API-v2.json` is the source of endpoint discovery. The model can use `find_endpoint` to search across methods and categories, `describe_endpoint` to inspect parameter/body/response schemas, and `call` / `raw_call` to execute the selected API operation. Pagination must be continued when the API response indicates more records or a next-page cursor.
+
+API coverage depends on the NinjaOne OpenAPI document, tenant permissions, API scopes, and the endpoints exposed by your region/version. A listed endpoint is not proof that your tenant can call it. The agent must report API errors and missing data rather than guessing.
+
+## Action safety
+
+- GET: allowed without confirmation.
+- POST / PUT / PATCH: require a human confirmation in the terminal.
+- DELETE: blocked by the agent.
+- API credentials and Foundry configuration remain local.
+
+These controls are deliberate safeguards, not limits on endpoint discovery. The catalogue remains available for all documented HTTP methods.
+
+## Tests
+
+```powershell
+pytest -q
+```
+
+The gateway tests are retained from upstream. Agent-specific tests are being added as the agent implementation evolves.
+
+## Upstream
+
+- Gateway foundation: https://github.com/jasondsmith72/NinjaRMM-API-Gateway-MCP
+- NinjaOne API documentation: https://app.ninjarmm.com/apidocs/
