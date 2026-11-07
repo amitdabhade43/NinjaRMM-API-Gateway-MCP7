@@ -35,12 +35,12 @@ def _method_for_tool(tool_name: str, args: dict[str, Any]) -> str | None:
     candidate = str(args.get("endpoint", "")) if name == "call" else ""
     if name == "raw_call":
         candidate = str(args.get("request", ""))
-    match = re.match(r"^\\s*(GET|POST|PUT|PATCH|DELETE)\\s+", candidate, re.I)
+    match = re.match(r"^\s*(GET|POST|PUT|PATCH|DELETE)\s+", candidate, re.I)
     return match.group(1).upper() if match else None
 
 
 def _confirm_action(method: str, args: dict[str, Any]) -> bool:
-    print("\\n[APPROVAL REQUIRED] This NinjaOne operation changes tenant data.")
+    print("\n[APPROVAL REQUIRED] This NinjaOne operation changes tenant data.")
     print(f"Method: {method}")
     print(f"Arguments: {args}")
     answer = input("Type YES to execute this operation: ").strip()
